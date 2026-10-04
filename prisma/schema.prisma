@@ -1,0 +1,156 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Trip {
+  id              String         @id @default(cuid())
+  slug            String         @unique
+  title           String
+  destination     String
+  description     String
+  durationDays    Int
+  tripType        String         // ladies_only | mixed | mother_and_kids
+  minAge          Int?
+  departurePoint  String
+  departureTime   String
+  returnPoint     String
+  returnTime      String
+  inclusions      String[]
+  exclusions      String[]
+  knowBeforeYouGo String?
+  images          String[]
+  categories      String[]
+  isActive        Boolean        @default(true)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  departures      Departure[]
+  itinerary       ItineraryDay[]
+
+  @@index([isActive])
+}
+
+model ItineraryDay {
+  id      String  @id @default(cuid())
+  tripId  String
+  trip    Trip    @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  dayNum  Int
+  title   String
+  details String
+  stay    String?
+
+  @@unique([tripId, dayNum])
+  @@index([tripId])
+}
+
+model Departure {
+  id             String          @id @default(cuid())
+  tripId         String
+  trip           Trip            @relation(fields: [tripId], references: [id])
+  startDate      DateTime
+  endDate        DateTime
+  pricePerPerson Int             // rupees
+  advanceAmount  Int             // rupees, per person
+  totalSeats     Int
+  seatsConfirmed Int             @default(0)
+  status         String          @default("open")
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  bookings       Booking[]
+  waitlist       WaitlistEntry[]
+
+  @@unique([tripId, startDate])
+  @@index([startDate])
+  @@index([status])
+}
+
+model Booking {
+  id              String    @id @default(cuid())
+  bookingRef      String    @unique
+  departureId     String
+  departure       Departure @relation(fields: [departureId], references: [id])
+
+  customerName    String
+  phone           String
+  email           String?
+  travellerCount  Int
+  travellerNames  String?
+  specialRequests String?
+
+  totalAmount     Int
+  amountPaid      Int       @default(0)
+  balanceDue      Int
+
+  status          String    @default("pending")
+  expiresAt       DateTime?
+  adminNotes      String?
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  payments        Payment[]
+
+  @@index([phone])
+  @@index([departureId])
+  @@index([status])
+  @@index([createdAt])
+}
+
+model Payment {
+  id                String   @id @default(cuid())
+  bookingId         String
+  booking           Booking  @relation(fields: [bookingId], references: [id])
+
+  amount            Int
+  method            String   @default("razorpay")
+  status            String   @default("created")
+
+  razorpayOrderId   String?  @unique
+  razorpayPaymentId String?  @unique
+  rawPayload        Json?
+
+  recordedBy        String?
+  createdAt         DateTime @default(now())
+
+  @@index([bookingId])
+}
+
+model WaitlistEntry {
+  id          String    @id @default(cuid())
+  departureId String
+  departure   Departure @relation(fields: [departureId], references: [id])
+  name        String
+  phone       String
+  email       String?
+  seatsWanted Int
+  notified    Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+
+  @@index([departureId])
+}
+
+model Enquiry {
+  id        String   @id @default(cuid())
+  name      String
+  phone     String
+  email     String?
+  message   String
+  source    String   @default("contact")
+  handled   Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([handled])
+}
+
+model AdminUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+}
