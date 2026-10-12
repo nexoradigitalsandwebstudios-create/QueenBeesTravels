@@ -1,26 +1,262 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* ---------------------------------------------------------------------
+   Queen Bees design tokens. Tailwind 4, no config file: every token here
+   becomes a utility, so --color-magenta-600 gives bg-magenta-600.
+
+   The brand is magenta and gold on warm cream. Magenta carries the
+   confidence and joy, gold carries the bee, cream keeps it warm rather
+   than clinical. This is the palette the client has already seen on the
+   demo site, so it stays; what changes here is that every pairing is
+   contrast-checked, which the demo's two flat brand colours could not be.
+
+   Each scale therefore runs light to dark, because a single brand hex is
+   not enough: #e21e84 is the brand, but white text on it fails WCAG, so
+   filled buttons need 600 and text on cream needs 600 or darker. The
+   scale makes the accessible choice available instead of forcing a
+   trade-off between brand and legibility.
+
+   LIGHT ONLY, deliberately. A warm cream palette inverts to mud, and a
+   second theme doubles the places a visual bug can hide.
+   --------------------------------------------------------------------- */
+
+@theme {
+  /* Magenta. The brand. 500 is the hero colour for large shapes and
+     marks. 600 and darker are the only safe choices behind white text
+     or as text on cream. */
+  --color-magenta-50: #fdf0f7;
+  --color-magenta-100: #fbdcec;
+  --color-magenta-200: #f7b9da;
+  --color-magenta-300: #f186c0;
+  --color-magenta-400: #ea4fa2;
+  --color-magenta-500: #e21e84;
+  --color-magenta-600: #b8156a;
+  --color-magenta-700: #961258;
+  --color-magenta-800: #7a1049;
+  --color-magenta-900: #600d3a;
+
+  /* Gold. The bee. Bright and happy, and far too light to sit behind
+     white text at any shade below 600: gold is a background for DARK
+     text, or an accent shape. */
+  --color-gold-50: #fffaeb;
+  --color-gold-100: #fef3c7;
+  --color-gold-200: #fde68a;
+  --color-gold-300: #fbcf38;
+  --color-gold-400: #eeb029;
+  --color-gold-500: #d1941c;
+  --color-gold-600: #a87415;
+  --color-gold-700: #855c13;
+
+  /* Warm neutrals. Brown-greys, never blue-greys, so text and borders
+     belong on the cream rather than looking imported. */
+  --color-ink-50: #faf8f5;
+  --color-ink-100: #f8f5f1;
+  --color-ink-200: #ebe6df;
+  --color-ink-300: #d9d1c6;
+  --color-ink-400: #a8a096;
+  --color-ink-500: #7d766d;
+  --color-ink-600: #55504b;
+  --color-ink-700: #3d3935;
+  --color-ink-800: #2a2724;
+  --color-ink-900: #1c1c1c;
+
+  /* Reassurance. Seats available, confirmed bookings, the safety badge.
+     Never a brand colour, only a status one. */
+  --color-leaf-50: #f1f7f2;
+  --color-leaf-100: #dcebdf;
+  --color-leaf-500: #4e8c5b;
+  --color-leaf-600: #3d7149;
+  --color-leaf-700: #315a3a;
+
+  /* Urgency and errors, warmed so "2 seats left" reads as helpful. */
+  --color-clay-50: #fdf3f1;
+  --color-clay-100: #f9e1dc;
+  --color-clay-500: #c4553d;
+  --color-clay-600: #a84530;
+  --color-clay-700: #8a3827;
+
+  /* Semantic aliases. Reach for these first; drop to a raw scale only
+     with a reason. Restyling the site is then four lines, not forty
+     files. */
+  --color-surface: #ffffff;
+  --color-surface-warm: var(--color-ink-100);
+  --color-border: var(--color-ink-200);
+  --color-text: var(--color-ink-700);
+  --color-text-strong: var(--color-ink-900);
+  --color-text-muted: var(--color-ink-600);
+
+  --radius-md: 0.625rem;
+  --radius-lg: 1rem;
+  --radius-xl: 1.5rem;
+  --radius-2xl: 2rem;
+
+  /* Warm-tinted rather than neutral black, so a card lifts off cream
+     without greying it. */
+  --shadow-card: 0 1px 2px rgb(28 28 28 / 0.04), 0 10px 30px rgb(28 28 28 / 0.07);
+  --shadow-lifted: 0 2px 6px rgb(28 28 28 / 0.06), 0 22px 50px rgb(28 28 28 / 0.12);
+  --shadow-brand: 0 10px 30px rgb(184 21 106 / 0.25);
+
+  /* A slow, settled easing. Things should arrive calmly on this site,
+     not snap. */
+  --ease-soft: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
+/* next/font hands us two variables from app/layout.tsx. `inline` is
+   required because these point at another variable. */
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display-serif);
 }
 
-@media (prefers-color-scheme: dark) {
+/* ---------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------- */
+
+/* EVERYTHING below goes inside @layer base, and that is not optional.
+   Unlayered CSS outranks every layered rule in the cascade, so a bare
+   `h2 { color: ... }` here would silently beat `class="text-white"` on
+   that same heading. Tailwind utilities live in the utilities layer; a
+   base rule has to be in the base layer to lose to them, which is what
+   we want. */
+@layer base {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    color-scheme: light;
+  }
+
+  body {
+    background-color: var(--color-surface);
+    color: var(--color-text);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    /* Most visitors are on a phone at arm's length. */
+    font-size: 1.0625rem;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display), ui-serif, Georgia, serif;
+    color: var(--color-text-strong);
+    font-weight: 600;
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+
+  /* Long paragraphs should not end with one orphaned word. */
+  p {
+    text-wrap: pretty;
+  }
+
+  /* A visible focus ring everywhere, in the brand colour. Never remove
+     it per component: that is the fastest way to make a site unusable
+     by keyboard. */
+  :focus-visible {
+    outline: 2px solid var(--color-magenta-600);
+    outline-offset: 2px;
+    border-radius: var(--radius-md);
+  }
+
+  ::selection {
+    background-color: var(--color-magenta-100);
+    color: var(--color-magenta-900);
+  }
+
+  /* The header is fixed, so jumping to #reviews would park the heading
+     underneath it. This offsets every anchor target by the header's
+     height. Set here rather than per section so a new anchored section
+     cannot forget it. */
+  :target,
+  [id] {
+    scroll-margin-top: 6.5rem;
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* The hero lines arrive one after another rather than all at once. It is
+   the difference between a page that loads and a page that opens.
+   Staggered with an inline animation-delay at the call site.
+
+   Deliberately CSS only. Revealing every section on scroll, the way the
+   demo does, needs an IntersectionObserver, which means a client
+   component, hydration, and content stuck at opacity zero if the
+   JavaScript fails. One animation on load cannot strand anything. */
+.hero-rise {
+  animation: hero-rise 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes hero-rise {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  /* The rule above would leave hero-rise frozen at opacity 0 for the
+     0.01ms it is allowed, so make the end state explicit. */
+  .hero-rise {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------------
+   Filter disclosure
+   --------------------------------------------------------------------- */
+
+/* On a phone the four filter selects filled the entire first screen and
+   pushed the first trip card 915px down the page. They collapse into a
+   <details> instead, closed by default.
+
+   A <details> rather than a button and some React state, because that
+   keeps the trip listing a server component. The header is meant to
+   stay the only client component on the public site, and a disclosure
+   does not need JavaScript.
+
+   On a desktop there is room for all four at once, so the summary is
+   hidden and the panel is forced open.
+
+   The @supports guard matters: in a browser without ::details-content
+   the panel stays collapsed, and the summary is still there to open it
+   by hand rather than the filters being unreachable. Forcing the
+   children to display:block would be the older trick and is wrong here,
+   because it would flatten the grid the selects are laid out in. */
+@layer components {
+  .filters-disclosure > summary {
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .filters-disclosure > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  /* 40rem is Tailwind's sm breakpoint. */
+  @media (min-width: 40rem) {
+    @supports selector(::details-content) {
+      .filters-disclosure > summary {
+        display: none;
+      }
+
+      .filters-disclosure::details-content {
+        content-visibility: visible;
+      }
+    }
+  }
 }

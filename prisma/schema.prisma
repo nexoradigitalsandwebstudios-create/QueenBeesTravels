@@ -1,11 +1,62 @@
+// Queen Bees Travels.
+//
+// Money is stored as whole rupees in Int columns. Never store paise and
+// never store a float. Multiply by 100 only at the Razorpay boundary.
+//
+// Enum values are written in lower snake_case on purpose: the same string
+// is used as the enum value, the URL filter value (?tripType=ladies_only)
+// and the seed data, so there is only ever one spelling to get right.
+
 generator client {
-  provider = "prisma-client-js"
+  provider = "prisma-client"
+  output   = "../generated/prisma"
 }
 
+// The connection URL lives in prisma7.config.ts, not here. Prisma 7
+// rejects a `url` inside this block.
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
 }
+
+// ---------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------
+
+enum TripType {
+  ladies_only
+  mixed
+  mother_and_kids
+}
+
+// Admin intent for a departure. Whether it is FULL is never stored here:
+// fullness is computed from seats in lib/availability.ts, because a
+// stored copy of a derived value is a copy that can go stale.
+enum DepartureStatus {
+  open
+  closed
+  cancelled
+  completed
+}
+
+enum BookingStatus {
+  pending   // seats are being held, advance not yet paid
+  confirmed // advance paid and signature verified, seats are theirs
+  cancelled // called off by the customer or by an admin
+  expired   // the 15 minute hold lapsed without payment
+  refunded  // money returned, seats released
+}
+
+enum PaymentStatus {
+  created  // Razorpay order created, customer has not paid yet
+  paid     // payment captured and signature verified
+  failed   // Razorpay reported a failure
+  refunded // refunded in full, see razorpayRefundId
+}
+
+// ---------------------------------------------------------------------
+// Content. Everything here is managed by the client in the admin area.
+// No trip, image, category or price is ever hardcoded in a component.
+// ---------------------------------------------------------------------
 
 model Trip {
   id              String         @id @default(cuid())
@@ -14,7 +65,7 @@ model Trip {
   destination     String
   description     String
   durationDays    Int
-  tripType        String         // ladies_only | mixed | mother_and_kids
+  tripType        TripType
   minAge          Int?
   departurePoint  String
   departureTime   String
@@ -24,13 +75,30 @@ model Trip {
   exclusions      String[]
   knowBeforeYouGo String?
   images          String[]
-  categories      String[]
   isActive        Boolean        @default(true)
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
 
+  categories      Category[]
   departures      Departure[]
   itinerary       ItineraryDay[]
+
+  @@index([isActive])
+}
+
+// The category vocabulary the client manages. The trip listing filter is
+// built from this table, so there is one authoritative spelling of
+// "Hill Station" instead of one spelling per trip.
+model Category {
+  id        String   @id @default(cuid())
+  slug      String   @unique
+  name      String
+  sortOrder Int      @default(0)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  trips     Trip[]
 
   @@index([isActive])
 }
@@ -51,14 +119,17 @@ model ItineraryDay {
 model Departure {
   id             String          @id @default(cuid())
   tripId         String
+  // No onDelete here on purpose. Deleting a trip that has departures
+  // must fail, because departures have bookings and bookings have money
+  // attached. The admin area deactivates a trip instead of deleting it.
   trip           Trip            @relation(fields: [tripId], references: [id])
   startDate      DateTime
   endDate        DateTime
-  pricePerPerson Int             // rupees
-  advanceAmount  Int             // rupees, per person
+  pricePerPerson Int             // whole rupees
+  advanceAmount  Int             // whole rupees, per person
   totalSeats     Int
   seatsConfirmed Int             @default(0)
-  status         String          @default("open")
+  status         DepartureStatus @default(open)
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 
@@ -68,55 +139,85 @@ model Departure {
   @@unique([tripId, startDate])
   @@index([startDate])
   @@index([status])
+  @@index([pricePerPerson])
 }
 
+// ---------------------------------------------------------------------
+// Customer data. Women's names, phone numbers and travel dates.
+// Never expose any of this on a public route.
+// ---------------------------------------------------------------------
+
 model Booking {
-  id              String    @id @default(cuid())
-  bookingRef      String    @unique
+  id              String        @id @default(cuid())
+  bookingRef      String        @unique
   departureId     String
-  departure       Departure @relation(fields: [departureId], references: [id])
+  departure       Departure     @relation(fields: [departureId], references: [id])
 
   customerName    String
   phone           String
   email           String?
   travellerCount  Int
-  travellerNames  String?
+  travellerNames  String[]
   specialRequests String?
 
-  totalAmount     Int
-  amountPaid      Int       @default(0)
-  balanceDue      Int
+  totalAmount     Int           // whole rupees, for all travellers together
+  amountPaid      Int           @default(0) // whole rupees
 
-  status          String    @default("pending")
-  expiresAt       DateTime?
+  status          BookingStatus @default(pending)
+
+  // The moment this booking's seat hold lapses. Always set, even on a
+  // confirmed booking, so the availability query never has to reason
+  // about null. It only has an effect while status is `pending`.
+  expiresAt       DateTime
+
+  confirmedAt     DateTime?
+  cancelledAt     DateTime?
   adminNotes      String?
 
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
 
   payments        Payment[]
 
+  // Matches the availability query in lib/availability.ts exactly. That
+  // query runs on every trip detail page view.
+  @@index([departureId, status, expiresAt])
   @@index([phone])
-  @@index([departureId])
-  @@index([status])
   @@index([createdAt])
 }
 
 model Payment {
-  id                String   @id @default(cuid())
+  id                String        @id @default(cuid())
   bookingId         String
-  booking           Booking  @relation(fields: [bookingId], references: [id])
+  booking           Booking       @relation(fields: [bookingId], references: [id])
 
-  amount            Int
-  method            String   @default("razorpay")
-  status            String   @default("created")
+  amount            Int           // whole rupees
+  method            String        @default("razorpay")
+  status            PaymentStatus @default(created)
 
-  razorpayOrderId   String?  @unique
-  razorpayPaymentId String?  @unique
+  razorpayOrderId   String?       @unique
+  razorpayPaymentId String?       @unique
+
+  // Set when the webhook finds the trip oversold and refunds
+  // automatically. Without this the refund cannot be reconciled against
+  // the Razorpay dashboard. One refund per payment is all this business
+  // needs; if partial refunds are ever required, move these three fields
+  // to their own model.
+  razorpayRefundId  String?       @unique
+  refundedAmount    Int           @default(0) // whole rupees
+  refundedAt        DateTime?
+
+  // Razorpay's own reason string when status is `failed`, saved so a
+  // failed payment can be explained to the customer.
+  failureReason     String?
+
+  // The full webhook or order payload, kept for debugging a disputed
+  // payment months later.
   rawPayload        Json?
 
   recordedBy        String?
-  createdAt         DateTime @default(now())
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   @@index([bookingId])
 }
@@ -132,6 +233,8 @@ model WaitlistEntry {
   notified    Boolean   @default(false)
   createdAt   DateTime  @default(now())
 
+  // One person tapping the button twice should not get called twice.
+  @@unique([departureId, phone])
   @@index([departureId])
 }
 
@@ -148,9 +251,63 @@ model Enquiry {
   @@index([handled])
 }
 
+// A review the client has chosen to show on the site. These are real
+// women with real names, so nothing here is ever generated: the client
+// copies them in from her Google listing through the admin area, and
+// only ones she has published appear.
+model Review {
+  id          String   @id @default(cuid())
+  authorName  String
+  quote       String
+  // 1 to 5. Not validated at the database level because Prisma has no
+  // check constraints; the admin form is where this is enforced.
+  rating      Int      @default(5)
+  // Optional free text, e.g. "Andaman Islands, 2025". Not a relation to
+  // Trip because reviews often mention trips that predate the site.
+  tripName    String?
+  isPublished Boolean  @default(false)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isPublished, sortOrder])
+}
+
+// The questions women actually ask before booking. Shown as an accordion
+// on the home page.
+model Faq {
+  id          String   @id @default(cuid())
+  question    String
+  answer      String
+  isPublished Boolean  @default(true)
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([isPublished, sortOrder])
+}
+
+// Single-row-per-key settings the client edits without a deploy: the
+// Google rating, the review count, the Instagram follower count, the
+// hero image.
+//
+// A key/value table rather than columns because these change in ones and
+// twos and a new one should not need a migration. Values are strings;
+// the component that reads one knows what shape it expects.
+model SiteSetting {
+  key       String   @id
+  value     String
+  // Shown beside the field in the admin so the client knows what she is
+  // editing and where it appears.
+  label     String
+  updatedAt DateTime @updatedAt
+}
+
 model AdminUser {
-  id           String   @id @default(cuid())
-  email        String   @unique
+  id           String    @id @default(cuid())
+  email        String    @unique
   passwordHash String
-  createdAt    DateTime @default(now())
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 }

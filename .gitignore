@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -40,4 +41,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-/app/generated/prisma
+# Prisma Client is generated, never committed
+/generated
+public/images/uploads/
+
+# Local database snapshots from `npm run db:backup`. These are a plain
+# copy of every row, including customer-shaped data and the dev admin's
+# password hash, so they never belong in git.
+/db-backups/
